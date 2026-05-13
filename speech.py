@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
 """
-compare_ecapa.py
-----------------
-Compare voices in two local audio files using SpeechBrain's ECAPA-TDNN
-speaker verification model. Newer architecture than Resemblyzer.
+compare_ecapa.py (compat version)
+---------------------------------
+Same as before but uses speechbrain.pretrained instead of speechbrain.inference
+for compatibility with older SpeechBrain versions.
 
 USAGE:
     python compare_ecapa.py file1.mp3 file2.mp3
-    python compare_ecapa.py file1.mp3 file2.mp3 --start1 30 --end1 60 --start2 45 --end2 75
     python compare_ecapa.py file1.mp3 file2.mp3 --no-separate
-
-REQUIREMENTS:
-    pip install speechbrain librosa numpy soundfile demucs "torchaudio<2.4"
-    plus ffmpeg on PATH
-
-INTERPRETING THE SCORE:
-    SpeechBrain returns a similarity score and a binary decision.
-    Score is cosine similarity (-1 to 1), threshold is around 0.25 by default
-    for speech. For singing the same caveats apply — treat as evidence not proof.
-    Compare relative scores across multiple pairs to interpret.
 """
 
 import argparse
@@ -42,7 +31,6 @@ def check_tool(name):
 
 
 def to_wav(in_path: Path, out_path: Path, start=None, end=None):
-    """Convert any audio file to mono 16kHz WAV (ECAPA expects 16kHz)."""
     print(f"\n=== Converting {in_path.name} to WAV ===")
     cmd = ["ffmpeg", "-y", "-i", str(in_path)]
     if start is not None:
@@ -84,7 +72,7 @@ def process_one(in_file, idx, args, work_dir):
 def verdict(score: float) -> str:
     if score > 0.50: return "Likely the SAME singer."
     if score > 0.35: return "Probably same singer (above typical threshold)."
-    if score > 0.25: return "Borderline — at the typical decision threshold."
+    if score > 0.25: return "Borderline."
     if score > 0.10: return "Probably different singers."
     return "Likely different singers."
 
@@ -112,8 +100,12 @@ def main():
 
     print("\n=== Loading SpeechBrain ECAPA-TDNN ===")
     print("(first run downloads ~80MB model)")
-    # Import after the heavy preprocessing so user sees download warnings cleanly.
-    from speechbrain.inference.speaker import SpeakerRecognition
+
+    # Try new import path first, fall back to old one
+    try:
+        from speechbrain.inference.speaker import SpeakerRecognition
+    except ImportError:
+        from speechbrain.pretrained import SpeakerRecognition
 
     verifier = SpeakerRecognition.from_hparams(
         source="speechbrain/spkrec-ecapa-voxceleb",
@@ -130,9 +122,6 @@ def main():
     print(f"  Model decision:    {'SAME speaker' if pred_val else 'DIFFERENT speakers'}")
     print(f"  Verdict (singing): {verdict(score_val)}")
     print("=" * 60)
-    print("\nNote: ECAPA's default threshold (~0.25) is calibrated for SPEECH.")
-    print("Singing tends to produce noisier scores. Run multiple pairs and")
-    print("look at relative differences, not absolute numbers.")
 
 
 if __name__ == "__main__":
